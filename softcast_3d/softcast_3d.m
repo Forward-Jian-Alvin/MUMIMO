@@ -1,6 +1,6 @@
 clear;
 filepath='C:\Users\wu\Desktop\Thesixth semester\mimo\3DVSource\3Dtest\3DV≤‚ ‘–Ú¡–\';
-filename = sprintf('balloons3.yuv');
+filename = sprintf('balloons5.yuv');
 fid = fopen([filepath filename],'rb');
 TotalFrameNum = 32;
 GOP = 8;
@@ -12,7 +12,7 @@ psnr = zeros(NumOfGop, numel(SNR));
 BandwidthRatio = 1;
 BlockNum = 64;
 %%
-imginfo.H       = FrameHeight;
+imginfo.H       = 1;
 imginfo.W       = FrameWidth;
 imginfo.cH      = imginfo.H / 2;
 imginfo.cW      = imginfo.W / 2;
