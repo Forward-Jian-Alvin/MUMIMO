@@ -25,6 +25,8 @@ imginfo.Usz     = imginfo.cH * imginfo.cW;
 imginfo.Vsz     = imginfo.cH * imginfo.cW;
 %%
 Tx_line = [];
+meta.lambda=[];
+meta.g=[];
 for ii=1:2
     fid = fopen([filepath 'balloons' num2str(ind(ii)) '.yuv'],'rb');
     for indGOP = 1:NumOfGop
@@ -69,14 +71,18 @@ for indCoherent=1
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
        %% stbc decoder
         Xr = fx_Decwj(Yc, H, meta);
-        rxLuma = fx_Recwj(Xr,bh,bw);
+        rxLuma = fx_Recwj(Xr,imginfo.bh,imginfo.bw);
+        rxPics = IDCT3(rxLuma) + 128;
+        rxPics = round(rxPics);
+        rxPics(rxPics > 255) = 255;
+        rxPics(rxPics < 0)   = 0;
        %% calculate psnr   
-        MSE_imgref_warp = reshape(mean(mean((rxLuma - img{3}).^2, 1), 2), 1, 1);
-        psnr_imgref_warp = [psnr_imgref_warp 10*log10(255^2 ./ MSE_imgref_warp)]; 
+        psnr(indGOP, ii) = fx_CalcPSNR(Pics, rxPics);
+        disp([indGOP EsN0dB psnr(indGOP, ii)]);
 	end
 end
-imshow(rxLuma,[]);
-disp(psnr_imgref_warp);
+% imshow(rxLuma,[]);
+% disp(psnr_imgref_warp);
        
        
        
