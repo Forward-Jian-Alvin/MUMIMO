@@ -1,6 +1,6 @@
 clear;
 filepath='C:\Users\wu\Desktop\Thesixth semester\mimo\3DVSource\3Dtest\3DV≤‚ ‘–Ú¡–\';
-filename = sprintf('balloons5.yuv');
+filename = sprintf('balloons1.yuv');
 fid = fopen([filepath filename],'rb');
 TotalFrameNum = 32;
 GOP = 8;
