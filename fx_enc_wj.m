@@ -3,7 +3,7 @@ function [ enc,lambda,g ] = fx_enc_wj( C,imginfo )
 %   Detailed explanation goes here
 %% 划分成64*8行
     x=[];
-    for kk = 1:8
+    for kk = 1:imginfo.GOP
         for tt = 1:8
             for jj=1:8
                 currentBlock = C((tt-1)*imginfo.bh+1:tt*imginfo.bh,(jj-1)*imginfo.bw+1:jj*imginfo.bw,kk);

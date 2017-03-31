@@ -6,13 +6,13 @@ filepath='C:\Users\wu\Desktop\Thesixth semester\mimo\3DVSource\3Dtest\3DV²âÊÔÐòÁ
 ind=[1 3 5];
 FrameHeight = 1024;
 FrameWidth = 768;
-TotalFrameNum = 8;
-GOP = 8;
-NumOfGop = TotalFrameNum/GOP;
-SNR = [-5 0 5 10 15 20 25];
+TotalFrameNum = 1;
+imginfo.GOP = 1;% GOP = 8;
+NumOfGop = TotalFrameNum/imginfo.GOP;
+SNR = -5:5:20;
 psnr = zeros(NumOfGop, numel(SNR));
 BandwidthRatio = 1;
-BlockNum = 64;
+imginfo.BlockNum = 64;
 %%
 imginfo.H       = FrameHeight;
 imginfo.W       = FrameWidth;
@@ -25,16 +25,19 @@ imginfo.Usz     = imginfo.cH * imginfo.cW;
 imginfo.Vsz     = imginfo.cH * imginfo.cW;
 %%
 Tx_line = [];
-meta.lambda=[];
-meta.g=[];
+lambdaBuffer=[];
+gBuffer=[];
 for ii=1:2
     fid = fopen([filepath 'balloons' num2str(ind(ii)) '.yuv'],'rb');
     for indGOP = 1:NumOfGop
-        Pics    = fx_LoadNFrm (fid, imginfo, GOP);
+        Pics    = fx_LoadNFrm (fid, imginfo, imginfo.GOP);
+        if ii==1
+            Pics_balloons1=Pics;
+        end
         C       = DCT3(Pics - 128);
         [enc,lambda,g]  =fx_enc_wj(C,imginfo);
-        meta.lambda=[meta.lambda;lambda];
-        meta.g=[meta.g;g];
+        lambdaBuffer=[lambdaBuffer;lambda];
+        gBuffer=[gBuffer;g];
      %% zigag  
         currentBlock_complex=[];
         for jj=1:size(enc,1)
@@ -47,9 +50,11 @@ for ii=1:2
         Tx_line=[Tx_line;currentBlock_complex(1:2:end);currentBlock_complex(2:2:end)];     
     end
 end
+meta.lambda=lambdaBuffer;
+meta.g=gBuffer;
 % stbc
-T0 = eye(2);
-T1 = [-1 0; 0 1];
+T0 = eye(2)/sqrt(2);
+T1 = [-1 0; 0 1]/sqrt(2);
 X = [ T0*    [Tx_line(1,:);Tx_line(4,:)]; ...
                        T1*  [conj(Tx_line(2,:));conj(Tx_line(3,:))] ];% ±£Ö¤Æ½¾ùÐÅºÅ¹¦ÂÊÎª1
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -70,14 +75,14 @@ for indCoherent=1
         meta.N0=N0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
        %% stbc decoder
-        Xr = fx_Decwj(Yc, H, meta);
-        rxLuma = fx_Recwj(Xr,imginfo.bh,imginfo.bw);
+        Xr = fx_Decwj(Yc, H, meta,imginfo);
+        rxLuma = fx_Recwj(Xr,imginfo.bh,imginfo.bw,imginfo);
         rxPics = IDCT3(rxLuma) + 128;
         rxPics = round(rxPics);
         rxPics(rxPics > 255) = 255;
         rxPics(rxPics < 0)   = 0;
        %% calculate psnr   
-        psnr(indGOP, ii) = fx_CalcPSNR(Pics, rxPics);
+        psnr(indGOP, ii) = fx_CalcPSNR(Pics_balloons1, rxPics);
         disp([indGOP EsN0dB psnr(indGOP, ii)]);
 	end
 end

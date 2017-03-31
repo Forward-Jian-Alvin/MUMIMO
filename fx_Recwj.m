@@ -1,13 +1,13 @@
-function z_tmp = fx_Recwj(Xr,bh,bw)
+function z_tmp = fx_Recwj(Xr,bh,bw,imginfo)
     rx_img{1}=Xr([1 2 3 4],:);
     rx_img{2}=Xr([5 6 7 8],:);
     rx_line_tmp=[];
     rx_line=[];
-    seg=size(Xr,2)/64/8;
-    for ii=2
+    seg=size(Xr,2)/imginfo.BlockNum/imginfo.GOP;
+    for ii=1
         rx=rx_img{ii};
-        for tt=1:8
-            for mm=1:64
+        for tt=1:imginfo.GOP
+            for mm=1:imginfo.BlockNum
                 for jj=seg*(mm-1+(tt-1)*64)+1:seg*(mm+(tt-1)*64)
                     for kk=1:4
                         rx_line_tmp=[rx_line_tmp rx(kk,jj)];
@@ -22,8 +22,8 @@ function z_tmp = fx_Recwj(Xr,bh,bw)
      %% reshape 
             z1 = [];
             tt = [];
-            for jj=1:8
-                for mm = 1:64
+            for jj=1:imginfo.GOP
+                for mm = 1:imginfo.BlockNum
                     currentBlock=invzigzag(rx_line(mm+(jj-1)*64,:),bh,bw);
                     tt = [tt currentBlock];
                     if mod(mm,8) == 0 %µ÷Õû¿í¶È
@@ -33,8 +33,8 @@ function z_tmp = fx_Recwj(Xr,bh,bw)
                 end
             end
             z_tmp=zeros(1024,768,8);
-            for jj=1:8
-                z_tmp(:,:,jj)=z1(1+(jj-1)*end/8:jj*end/8,:);
+            for jj=1:imginfo.GOP
+                z_tmp(:,:,jj)=z1(1+(jj-1)*end/imginfo.GOP:jj*end/imginfo.GOP,:);
             end
             
 %             warp_coset=meta.d(1:end/2,:);
