@@ -23,8 +23,9 @@ FrameWidth = 768;
 TotalFrameNum = 32;
 imginfo.GOP = 8;% GOP = 8;
 NumOfGop = TotalFrameNum/imginfo.GOP;
-SNR = -5:5:20;
-psnr = zeros(NumOfGop, numel(SNR));
+SNR = 5:5:20;
+psnr1 = zeros(NumOfGop, numel(SNR));
+psnr2 = zeros(NumOfGop, numel(SNR));
 simCoefNum = zeros(NumOfGop,imginfo.GOP);
 BandwidthRatio = 1;
 imginfo.BlockNum = 64;
@@ -54,14 +55,15 @@ for indGOP = 1%:NumOfGop
         Pics    = fx_LoadNFrm (fid(ii), imginfo, imginfo.GOP);
         C       = DCT3(Pics - 128);
         if ii==1
+            Pics_balloons1=Pics;
             C_balloons1=C;
         end
         % SOFTCAST Encoder
         x=[];
         for kk = 1:imginfo.GOP
-            for tt = 1:8
+            for tt1 = 1:8
                 for jj=1:8
-                    currentBlock = C((tt-1)*imginfo.bh+1:tt*imginfo.bh,(jj-1)*imginfo.bw+1:jj*imginfo.bw,kk);
+                    currentBlock = C((tt1-1)*imginfo.bh+1:tt1*imginfo.bh,(jj-1)*imginfo.bw+1:jj*imginfo.bw,kk);
                     x = [x;reshape(currentBlock,1,imginfo.bh*imginfo.bw)];
                 end
             end
@@ -77,7 +79,7 @@ for indGOP = 1%:NumOfGop
         TxG=[TxG;g];
         Tx=[Tx;enc];
     end
-    Threshold=0.1;
+    Threshold=0;
     TxData1=Tx(1:end/2,:);
     TxData2=Tx(end/2+1:end,:);
     LikelyhoodCoef=abs(TxData1-TxData2)./abs(TxData1);
@@ -110,17 +112,18 @@ for indGOP = 1%:NumOfGop
     InvalidSet2=zeros(length(find(LikelyhoodCoef==0))+4-mod(length(find(LikelyhoodCoef==0)),4),1);
     validSet2=zeros(length(find(LikelyhoodCoef==1))+4-mod(length(find(LikelyhoodCoef==1)),4),1);
     indGvalid=sum(LikelyhoodCoef,2);indGvalid(end)=4-mod(length(find(LikelyhoodCoef==1)),4)+indGvalid(end);
-    indGvalidsum = zeros(size(indGvalid));
-    indGInvalidsum = zeros(size(indGvalid));
-    for mm=1:length(indGvalid)
-        tmp=mm;
-        while(tmp~=0)
-            indGvalidsum(mm)=indGvalidsum(mm)+indGvalid(tmp);
-            tmp=tmp-1;
-        end
-        indGInvalidsum(mm)=12288*mm-indGvalidsum(mm);
-    end
-    indGInvalidsum(end)=4-mod(length(find(LikelyhoodCoef==1)),4)+indGInvalidsum(end);
+%     indGvalidsum = zeros(size(indGvalid));
+%     indGInvalidsum = zeros(size(indGvalid));
+%     for mm=1:length(indGvalid)
+%         tmp=mm;
+%         while(tmp~=0)
+%             indGvalidsum(mm)=indGvalidsum(mm)+indGvalid(tmp);
+%             tmp=tmp-1;
+%         end
+% %         indGInvalidsum(mm)=12288*mm-indGvalidsum(mm);
+%     end
+    indGInvalid=sum(1-LikelyhoodCoef,2);indGInvalid(end)=indGInvalid(end)+4-mod(length(find(LikelyhoodCoef==0)),4);
+%     indGInvalidsum(end)=4-mod(length(find(LikelyhoodCoef==1)),4)+indGInvalidsum(end)+4-mod(length(find(LikelyhoodCoef==0)),4);
     
     %
     indexValid=1;
@@ -168,7 +171,7 @@ fprintf('**Channel**\n');
     Nt =2;Nr=2;
     Es = mean(mean(abs(TxData(:).^2)));
     for indCoherent=1
-        for ii = 1:numel(SNR)
+        for ii = 1%:numel(SNR)
             EsN0dB = SNR(ii);
            %% MIMO simulation
             fx_MIMOchannelReset(indCoherent);
@@ -201,75 +204,150 @@ fprintf('**Channel SNR:%d,Channel State:%d**\n',EsN0dB,indCoherent);
             Xrv1 = zeros(4,size(Yr,2)); Xrv2 = zeros(4,size(Yr,2));
             gValid1=zeros(1,4);gValid2=zeros(1,4);
             lambdaValid1=zeros(1,4);lambdaValid2=zeros(1,4);
-            for tt=1:size(Yr,2)
+            
+            ValidGset1=[];ValidGset2=[];lambdaValidset1=[];lambdaValidset2=[];
+            for ss=1:512
+                ValidGset1=[ValidGset1 TxG(ss)*ones(1,indGvalid(ss))];
+                ValidGset2=[ValidGset2 TxG(ss+512)*ones(1,indGvalid(ss))];
+                lambdaValidset1=[lambdaValidset1 TxLambda(ss)*ones(1,indGvalid(ss))];
+                lambdaValidset2=[lambdaValidset2 TxLambda(ss+512)*ones(1,indGvalid(ss))];
+            end
+            for tt1=1:size(Yr,2)
                 % search g
-                for ind4=1:4
-                    indg=4*(tt-1)+ind4;
-                    for ss=length(TxG)/2:-1:1
-                        if(indg<=indGvalidsum(ss))
-                           gValid1(ind4)=TxG(ss);
-                           gValid2(ind4)=TxG(ss+512);
-                           lambdaValid1(ind4)=TxLambda(ss);
-                           lambdaValid2(ind4)=TxLambda(ss+512);
-                        end
-                    end
-                end
+                indg=4*(tt1-1)+(1:4);
+                gValid1(:)=ValidGset1(indg);
+                gValid2(:)=ValidGset2(indg);
+                lambdaValid1(:)=lambdaValidset1(indg);
+                lambdaValid2(:)=lambdaValidset2(indg);
+%                 for ind4=1:4
+%                     indg=4*(tt-1)+ind4;
+%                     for ss=length(TxG)/2:-1:1
+%                         if(indg<=indGvalidsum(ss))
+%                            gValid1(ind4)=TxG(ss);
+%                            gValid2(ind4)=TxG(ss+512);
+%                            lambdaValid1(ind4)=TxLambda(ss);
+%                            lambdaValid2(ind4)=TxLambda(ss+512);
+%                         end
+%                     end
+%                 end
                 D1 = blkdiag(Hhat, Hhat) * diag([gValid1(1) gValid1(2) gValid1(3) gValid1(4)]);
                 L1=[lambdaValid1(1) lambdaValid1(2) lambdaValid1(3) lambdaValid1(4)];
                 DecMat1 = diag(L1) * D1' * pinv( D1 * diag(L1) * D1'  + Ne * eye(size(D1,1)));
-                Xrv1(:,tt)= DecMat1 * Yr([1 3 2 4],tt);
+                Xrv1(:,tt1)= DecMat1 * Yr([1 3 2 4],tt1);
                 
                 D2 = blkdiag(Hhat, Hhat) * diag([gValid2(1) gValid2(2) gValid2(3) gValid2(4)]);
                 L2=[lambdaValid2(1) lambdaValid2(2) lambdaValid2(3) lambdaValid2(4)];
                 DecMat2 = diag(L2) * D2' * pinv( D2 * diag(L2) * D2'  + Ne * eye(size(D2,1)));
-                Xrv2(:,tt)= DecMat2 * Yr([1 3 2 4],tt);
+                Xrv2(:,tt1)= DecMat2 * Yr([1 3 2 4],tt1);
             end
             XrValid1=Xrv1(:);XrValid2=Xrv2(:);
+            fprintf('**Valid Data Decoding**\n');
             % step3: 解Invalid
+            % 1 把数据映射回去，2 矩阵求解 
+            
             Yrwj=[real(InValidDec);imag(InValidDec)];
             Hr = [real(H) -imag(H); imag(H) real(H)];
             XrInv = zeros(8,size(InValidDec,2));
             gInValid=zeros(1,8);
             lambdaInValid=zeros(1,8);
-            for tt=1:size(InValidDec,2)
+            InvalidGset1=[];InvalidGset2=[];InvalidLambdaset1=[];InvalidLambdaset2=[];
+            for ss=1:512
+                InvalidGset1=[InvalidGset1 TxG(ss)*ones(1,indGInvalid(ss))];
+                InvalidGset2=[InvalidGset2 TxG(ss+512)*ones(1,indGInvalid(ss))];
+                InvalidLambdaset1=[InvalidLambdaset1 TxLambda(ss)*ones(1,indGInvalid(ss))];
+                InvalidLambdaset2=[InvalidLambdaset2 TxLambda(ss+512)*ones(1,indGInvalid(ss))];
+            end
+            for tt1=1:size(InValidDec,2)
+                indg=4*(tt1-1)+(1:4);
+                gInValid(1:4)=InvalidGset1(indg);
+                gInValid(5:8)=InvalidGset2(indg);
+                lambdaInValid(1:4)=InvalidLambdaset1(indg);
+                lambdaInValid(5:8)=InvalidLambdaset2(indg);
                 % search g
-                for ind4=1:4
-                    indg=4*(tt-1)+ind4;
-                    for ss=length(TxG)/2:-1:1
-                        if(indg<=indGInvalidsum(ss))
-                           gInValid(ind4)=TxG(ss);
-                           gInValid(ind4+4)=TxG(ss);
-                           lambdaInValid(ind4)=TxLambda(ss);
-                           lambdaInValid(ind4+4)=TxLambda(ss);
-                        else
-                           break;
-                        end
-                    end
-                end
-                D1 = Hr * diag([gInValid(1) gInValid(7) gInValid(2) gInValid(8)]);
-                D2 = Hr * diag([gInValid(3) gInValid(5) gInValid(4) gInValid(6)]);
-                D_temp=blkdiag(D1,D2);
-                L=[lambdaInValid(1) lambdaInValid(7) lambdaInValid(2) lambdaInValid(8)
-                    lambdaInValid(3) lambdaInValid(5) lambdaInValid(4) lambdaInValid(6)];
+%                 for ind4=1:4
+%                     gInValid(ind4)=TxG(ss);
+%                     for ss=length(TxG)/2:-1:1
+%                         if(indg<=indGInvalidsum(ss))
+%                            gInValid(ind4)=TxG(ss);
+%                            gInValid(ind4+4)=TxG(ss);
+%                            lambdaInValid(ind4)=TxLambda(ss);
+%                            lambdaInValid(ind4+4)=TxLambda(ss);
+%                         else
+%                             
+%                            break;
+%                         end
+%                     end
+%                 end
+                D_temp= diag([gInValid(1) gInValid(7) gInValid(2) gInValid(8) gInValid(3) gInValid(5) gInValid(4) gInValid(6)]);
+                L=[lambdaInValid(1) lambdaInValid(7) lambdaInValid(2) lambdaInValid(8) lambdaInValid(3) lambdaInValid(5) lambdaInValid(4) lambdaInValid(6)];
                 DecMat=diag(L) * D_temp' * pinv(D_temp * diag(L) * D_temp' + blkdiag(N0 * eye(size(D_temp,1))));
-                XrInv(:,tt)= DecMat * Yrwj([1:2 5:6 3:4 7:8],tt);
+                XrInv(:,tt1)= DecMat * Yrwj([1:2 5:6 3:4 7:8],tt1);
             end
             order=[1 3 5 7 6 8 2 4];
             Xtmp=XrInv(order,:);
             Xtmp(3,:)=-Xtmp(3,:);
             Xtmp(6,:)=-Xtmp(6,:);
             XrVideo1=Xtmp(1:4,:);XrVideo2=Xtmp(5:end,:);
-            XrInValid1=XrVideo1(:);XrInValid2=XrVideo2(:);
+            XrinValid1=XrVideo1(:);XrinValid2=XrVideo2(:);
+            fprintf('**InValid Data Decoding**\n');
             % step4: 合并解的数据 1024*12288
+            Rec=zeros(size(Tx,1),size(Tx,2));
+            tmpv=1;tmpinv=1;
+            for iirec=1:size(Tx,1)/2
+                for jjrec=1:size(Tx,2)
+                    if LikelyhoodCoef(iirec,jjrec)==1
+                        Rec(iirec,jjrec)=XrValid1(tmpv);
+                        Rec(iirec+512,jjrec)=XrValid2(tmpv);
+                        tmpv=tmpv+1;
+                    else
+                        Rec(iirec,jjrec)=XrinValid1(tmpinv);
+                        Rec(iirec+512,jjrec)=XrinValid2(tmpinv);
+                        tmpinv=tmpinv+1;
+                    end
+                end
+            end
+%*******************************Reconstruct*******************************%
+            % reshape 
+            RecVideo1 = [];RecVideo2 = [];
+            tt1 = [];tt2=[];
+            for recii=1:imginfo.GOP
+                for recjj = 1:imginfo.BlockNum
+                    currentBlock1=reshape(Rec(recjj+(recii-1)*64,:),imginfo.bh,imginfo.bw);
+                    currentBlock2=reshape(Rec(recjj+(recii-1)*64+512,:),imginfo.bh,imginfo.bw);
+                    tt1 = [tt1 currentBlock1];
+                    tt2 = [tt2 currentBlock1];
+                    if mod(recjj,8) == 0 %调整宽度
+                        RecVideo1 = [RecVideo1;tt1];
+                        RecVideo2 = [RecVideo2;tt2];
+                        tt1 = [];
+                        tt2 = [];
+                    end
+                end
+            end
             
+            Rectmp1=zeros(FrameHeight,FrameWidth,imginfo.GOP);
+            Rectmp2=zeros(FrameHeight,FrameWidth,imginfo.GOP);
+            for Recmm=1:imginfo.GOP
+                Rectmp1(:,:,Recmm)=RecVideo1(1+(Recmm-1)*end/imginfo.GOP:Recmm*end/imginfo.GOP,:);
+                Rectmp2(:,:,Recmm)=RecVideo2(1+(Recmm-1)*end/imginfo.GOP:Recmm*end/imginfo.GOP,:);
+            end
+            rxLuma1 = IDCT3(Rectmp1) + 128;
+            rxLuma2 = IDCT3(Rectmp2) + 128;
+            rxLuma1 = round(rxLuma1);
+            rxLuma1(rxLuma1 > 255) = 255;
+            rxLuma1(rxLuma1 < 0)   = 0;
+            rxLuma2 = round(rxLuma2);
+            rxLuma2(rxLuma2 > 255) = 255;
+            rxLuma2(rxLuma2 < 0)   = 0;
+            %% calculate psnr   
+            psnr1(indGOP, ii) = fx_CalcPSNR(Pics_balloons1, rxLuma1);
+            disp([indGOP EsN0dB psnr1(indGOP, ii)]);
+            psnr2(indGOP, ii) = fx_CalcPSNR(Pics, rxLuma2);
+            disp([indGOP EsN0dB psnr2(indGOP, ii)]);
         end
     end
-
-
-%*******************************Reconstruct*******************************%
-    
 end
-
+datestr(now)
 
 
 
