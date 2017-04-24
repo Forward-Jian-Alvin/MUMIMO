@@ -1,6 +1,9 @@
 close all;
 clear
 datestr(now)
+% clear global;
+global fitfn resfn degenfn psize numpar
+
 addpath('modelspecific');
 addpath('multigs');
 addpath('MatlabFns\Projective');
@@ -15,15 +18,23 @@ if exist('computeIntersection','file')~=3
     mex computeIntersection.c;
 end
 cd ..;
+
+
+% options :0 invalid;1 valid;
+DcComponent=0;
+MannedSource=0;
+ROI=1;
 %%
 filepath='C:\Users\wu\Desktop\Thesixth semester\mimo\3DVSource\3Dtest\3DV测试序列\';
 ind=[1 3 5];
 FrameHeight = 1024;
 FrameWidth = 768;
+FrameHeightROI = 992;
+FrameWidthROI = 760;
 TotalFrameNum = 32;
 imginfo.GOP = 8;% GOP = 8;
 NumOfGop = TotalFrameNum/imginfo.GOP;
-SNR = 5:5:20;
+SNR = -5:5:15;
 psnr1 = zeros(NumOfGop, numel(SNR));
 psnr2 = zeros(NumOfGop, numel(SNR));
 simCoefNum = zeros(NumOfGop,imginfo.GOP);
@@ -32,32 +43,100 @@ imginfo.BlockNum = 64;
 %%
 imginfo.H       = FrameHeight;
 imginfo.W       = FrameWidth;
-imginfo.bh = FrameHeight/8;
-imginfo.bw = FrameWidth/8;
-imginfo.cH      = imginfo.H / 2;
-imginfo.cW      = imginfo.W / 2;
+imginfo.cH      = FrameHeight / 2;
+imginfo.cW      = FrameWidth / 2;
 imginfo.Ysz     = imginfo.H * imginfo.W;
 imginfo.Usz     = imginfo.cH * imginfo.cW;
 imginfo.Vsz     = imginfo.cH * imginfo.cW;
+
+imginfo.HROI       = FrameHeightROI;
+imginfo.WROI       = FrameWidthROI;
+imginfo.bh = FrameHeightROI/8;
+imginfo.bw = FrameWidthROI/8;
+
 %%    
 fid=zeros(2,1);
 for indVideo=1:2
     fid(indVideo) = fopen([filepath 'balloons' num2str(2*indVideo-1) '.yuv'],'rb');
+% test 输入相同source
+%     fid(indVideo) = fopen([filepath 'balloons3.yuv'],'rb');
 end
+%*******************************Source Alignment***************************%
+Pics_srcAlign1    = fx_LoadNFrm (fid(1), imginfo, imginfo.GOP);
+Pics_srcAlign2    = fx_LoadNFrm (fid(2), imginfo, imginfo.GOP);
+imgref_warpSet=zeros(imginfo.H, imginfo.W,imginfo.GOP);
+for FrmId=1:8
+    Frm1=Pics_srcAlign1(:,:,FrmId);
+    Frm2=Pics_srcAlign2(:,:,FrmId);
+    figure(1);subplot(2,2,1);imshow(Frm1,[]);title('balloons1');
+    figure(1);subplot(2,2,2);imshow(Frm2,[]);title('balloons3');
+    if FrmId==1
+        fitfn = 'homography_fit';
+        resfn = 'homography_res';
+        degenfn = 'homography_degen';
+        psize   = 4;
+        numpar  = 9;
+    %% feature-based image alignment
+        M = 500;
+        thr   = 0.1;  % RANSAC threshold.
+        [kp1,ds1] = vl_sift(single(Frm1),'PeakThresh', 0,'edgethresh',50); %edit by yhj; original is 500
+        [kp2,ds2] = vl_sift(single(Frm2),'PeakThresh', 0,'edgethresh',50); %edit by yhj; original is 500
+    %     figure(1);subplot(2,2,1);imshow(img{2},[]);title('img_ori image');
+    %     figure(1);subplot(2,2,2);imshow(img{1},[]);title('img_ref image');
+        matches   = vl_ubcmatch(ds1,ds2);
+        data_orig = [ kp1(1:2,matches(1,:)) ; ones(1,size(matches,2)) ; kp2(1:2,matches(2,:)) ; ones(1,size(matches,2)) ];
+
+        [ dat_norm_img1,T1 ] = normalise2dpts(data_orig(1:3,:));
+        [ dat_norm_img2,T2 ] = normalise2dpts(data_orig(4:6,:));
+        data_norm = [ dat_norm_img1 ; dat_norm_img2 ];
+
+        [ par,res,inx,tim ] = multigsSampling(100,data_norm,M,10);
+        con = sum(res<=thr);
+        [ ~, maxinx ] = max(con);
+        inliers = find(res(:,maxinx)<=thr);
+        pt1_inlier = data_orig(1:2,inliers);
+        pt2_inlier = data_orig(4:5,inliers);
+
+        [h,A,D1,D2] = feval(fitfn,data_norm(:,inliers));
+        H = T2\(reshape(h,3,3)*T1);
+        H1 = pinv(H);
+        disp(H1);
+    end
+    [imgref_warp,imref_invwarp,x,y,xii,yii]= imTransD_wj(Frm2, H1, size(Frm2));
+    % 取整可能带来的误差
+    imgref_warp=round(imgref_warp);
+    imgref_warp(imgref_warp>255)=255;
+    imgref_warp(imgref_warp<0)=0;
+    imgref_warpSet(:,:,FrmId)=imgref_warp;
+    fprintf('Source Aligned!');
+end
+
+input('请输入一个数字，并按回车继续：');
 %*******************************Encoder***********************************%
-simCoef=zeros(64,imginfo.H*imginfo.W/64,imginfo.GOP*NumOfGop);
+simCoef=zeros(64,imginfo.HROI*imginfo.WROI/64,imginfo.GOP*NumOfGop);
 
 for indGOP = 1%:NumOfGop
     Tx=[];
     TxLambda=[];
     TxG=[];
+%     Test_Rec=zeros(1024,12288);
     for ii=1:2
-        Pics    = fx_LoadNFrm (fid(ii), imginfo, imginfo.GOP);
+        Pics = fx_LoadNFrm (fid(ii), imginfo, imginfo.GOP);
+        if ROI && ii==1
+            Pics = Pics(33:end,1:760,:);
+        elseif ROI && ii==2 
+            Pics = imgref_warpSet(33:end,1:760,:);
+        end
         C       = DCT3(Pics - 128);
         if ii==1
             Pics_balloons1=Pics;
             C_balloons1=C;
         end
+        if MannedSource && ii==2
+            C(1:imginfo.bh,1:imginfo.bw,1)=C_balloons1(1:imginfo.bh,1:imginfo.bw,1);
+            Pics=IDCT3(C)+128;
+        end
+        
         % SOFTCAST Encoder
         x=[];
         for kk = 1:imginfo.GOP
@@ -68,6 +147,13 @@ for indGOP = 1%:NumOfGop
                 end
             end
         end
+        if MannedSource && ii==2
+            x(1,:)=reshape(C_balloons1(1:imginfo.bh,1:imginfo.bw,1),1,imginfo.bh*imginfo.bw);
+        end
+        
+        %******************test for Rec
+%         Test_Rec(end/2*(ii-1)+1:end/2*ii,:)= x;
+        %********************
         P1 = 1;% mean(mean(x.*x));
         P = P1*8*8*8;%total power constraint
         lambda = mean((x.*x)');
@@ -79,7 +165,7 @@ for indGOP = 1%:NumOfGop
         TxG=[TxG;g];
         Tx=[Tx;enc];
     end
-    Threshold=0;
+    Threshold=0.15;
     TxData1=Tx(1:end/2,:);
     TxData2=Tx(end/2+1:end,:);
     LikelyhoodCoef=abs(TxData1-TxData2)./abs(TxData1);
@@ -171,7 +257,7 @@ fprintf('**Channel**\n');
     Nt =2;Nr=2;
     Es = mean(mean(abs(TxData(:).^2)));
     for indCoherent=1
-        for ii = 1%:numel(SNR)
+        for ii = 1:numel(SNR)
             EsN0dB = SNR(ii);
            %% MIMO simulation
             fx_MIMOchannelReset(indCoherent);
@@ -182,8 +268,10 @@ fprintf('**Channel**\n');
             H = H(:,1:Nt);
             Yc = blkdiag(H, H) * TxData + fx_AWGN(Nt*Es, EsN0dB, [Nr/Nt*size(TxData,1) size(TxData,2)]);
             N0 = Nt * Es * 10^(-EsN0dB/10) / Nr;
+%             Yc = blkdiag(H, H) * TxData ;
+%             N0 = 0;
 %*******************************Decoder***********************************%
-fprintf('**Channel SNR:%d,Channel State:%d**\n',EsN0dB,indCoherent);
+fprintf('**Channel SNR:%d,Channel State:%d**\n',EsN0dB,indCoherent); 
             % step1: 区分出valid 和 Invalid data
             ValidDec=Yc(:,1:length(line1));
             InValidDec=Yc(:,length(line1)+1:end);
@@ -278,15 +366,18 @@ fprintf('**Channel SNR:%d,Channel State:%d**\n',EsN0dB,indCoherent);
 %                         end
 %                     end
 %                 end
-                D_temp= diag([gInValid(1) gInValid(7) gInValid(2) gInValid(8) gInValid(3) gInValid(5) gInValid(4) gInValid(6)]);
+%                 D_temp= diag([gInValid(1) gInValid(7) gInValid(2) gInValid(8) gInValid(3) gInValid(5) gInValid(4) gInValid(6)]);
+                D1 = Hr * diag([gInValid(1) gInValid(7) gInValid(2) gInValid(8)]);
+                D2 = Hr * diag([gInValid(3) gInValid(5) gInValid(4) gInValid(6)]);
+                D_temp=blkdiag(D1,D2);
                 L=[lambdaInValid(1) lambdaInValid(7) lambdaInValid(2) lambdaInValid(8) lambdaInValid(3) lambdaInValid(5) lambdaInValid(4) lambdaInValid(6)];
                 DecMat=diag(L) * D_temp' * pinv(D_temp * diag(L) * D_temp' + blkdiag(N0 * eye(size(D_temp,1))));
                 XrInv(:,tt1)= DecMat * Yrwj([1:2 5:6 3:4 7:8],tt1);
             end
             order=[1 3 5 7 6 8 2 4];
             Xtmp=XrInv(order,:);
-            Xtmp(3,:)=-Xtmp(3,:);
-            Xtmp(6,:)=-Xtmp(6,:);
+%             Xtmp(3,:)=-Xtmp(3,:);
+%             Xtmp(6,:)=-Xtmp(6,:);
             XrVideo1=Xtmp(1:4,:);XrVideo2=Xtmp(5:end,:);
             XrinValid1=XrVideo1(:);XrinValid2=XrVideo2(:);
             fprintf('**InValid Data Decoding**\n');
@@ -315,7 +406,7 @@ fprintf('**Channel SNR:%d,Channel State:%d**\n',EsN0dB,indCoherent);
                     currentBlock1=reshape(Rec(recjj+(recii-1)*64,:),imginfo.bh,imginfo.bw);
                     currentBlock2=reshape(Rec(recjj+(recii-1)*64+512,:),imginfo.bh,imginfo.bw);
                     tt1 = [tt1 currentBlock1];
-                    tt2 = [tt2 currentBlock1];
+                    tt2 = [tt2 currentBlock2];
                     if mod(recjj,8) == 0 %调整宽度
                         RecVideo1 = [RecVideo1;tt1];
                         RecVideo2 = [RecVideo2;tt2];
@@ -325,11 +416,15 @@ fprintf('**Channel SNR:%d,Channel State:%d**\n',EsN0dB,indCoherent);
                 end
             end
             
-            Rectmp1=zeros(FrameHeight,FrameWidth,imginfo.GOP);
-            Rectmp2=zeros(FrameHeight,FrameWidth,imginfo.GOP);
+            Rectmp1=zeros(FrameHeightROI,FrameWidthROI,imginfo.GOP);
+            Rectmp2=zeros(FrameHeightROI,FrameWidthROI,imginfo.GOP);
             for Recmm=1:imginfo.GOP
                 Rectmp1(:,:,Recmm)=RecVideo1(1+(Recmm-1)*end/imginfo.GOP:Recmm*end/imginfo.GOP,:);
                 Rectmp2(:,:,Recmm)=RecVideo2(1+(Recmm-1)*end/imginfo.GOP:Recmm*end/imginfo.GOP,:);
+            end
+            if DcComponent
+                Rectmp1(1,1,1)=C_balloons1(1,1,1);
+                Rectmp2(1,1,1)=C(1,1,1);
             end
             rxLuma1 = IDCT3(Rectmp1) + 128;
             rxLuma2 = IDCT3(Rectmp2) + 128;

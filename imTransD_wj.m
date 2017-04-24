@@ -95,17 +95,18 @@ function [newim,invim,x,y,xii,yii] = transformImage_wj(im, T, sze);
     % Transform these xy coords to determine where to interpolate values
     % from. 
     Tinv = inv(T);
-    sxy = homoTrans(Tinv, [xi(:)' ; yi(:)' ; ones(1,sze(1)*sze(2))]);
+    sxy = homoTrans(Tinv, [xi(:)' ; yi(:)' ; ones(1,sze(1)*sze(2))]);% 画图坐标
     
     xi = reshape(sxy(1,:),sze(1),sze(2));
     yi = reshape(sxy(2,:),sze(1),sze(2));
     
-    [x,y] = meshgrid(1:cols,1:rows);
+    [x,y] = meshgrid(1:cols,1:rows);% 幕布x，y坐标
  
 %    x = x-1; % Offset x and y relative to region origin.
 %    y = y-1; 
     newim = interp2(x,y,im,xi,yi,'cubic'); % Interpolate values from source image.
-%     figure(1);subplot(2,2,3);imshow(newim,[]);title('warped image');
+% xi,yi坐标上的像素值已知，插值到x，y上。
+        figure(1);subplot(2,2,3);imshow(newim,[]);title('warped image');
     %imwrite(uint8(newim),'.\images\result\warped.png');
     % Place new image into an image of the desired size
     %newim = implace(zeros(sze),newim,0,0);
@@ -115,7 +116,8 @@ function [newim,invim,x,y,xii,yii] = transformImage_wj(im, T, sze);
     xii = reshape(xy_wj(1,:),sze(1),sze(2));
     yii = reshape(xy_wj(2,:),sze(1),sze(2));
     invim = interp2(x,y,newim,xii,yii,'cubic');
-%     figure(1);subplot(2,2,4);imshow(invim,[]);title('inverse warped image');
+    
+    figure(1);subplot(2,2,4);imshow(invim,[]);title('inverse warped image');
     %imwrite(uint8(invim),'.\images\result\inv_warped.png');
     %% calculate psnr
     NaNNum=0;
@@ -127,4 +129,5 @@ function [newim,invim,x,y,xii,yii] = transformImage_wj(im, T, sze);
             end
         end
     end
-    invpsnr=Calpsnr(invim,im,NaNNum)
+    invpsnr=InterpCalpsnr(invim,im,NaNNum);
+    disp(invpsnr);

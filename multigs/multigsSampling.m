@@ -25,7 +25,7 @@
 %  http://www.robots.ox.ac.uk/~vgg/hzbook/code/).
 
 
-function [ par res inx tim ] = multigsSampling(lim,data,M,blksiz)
+function [ par,res,inx,tim ] = multigsSampling(lim,data,M,blksiz)
 % input: 
 % lim (1x1) = Maximum CPU seconds allowed.
 % data (dxn) = Input data of dimensionality d.
